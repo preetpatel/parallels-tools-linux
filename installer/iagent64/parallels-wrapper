@@ -1,0 +1,132 @@
+#!/bin/sh
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+prl_executable=$(basename "${0}")
+prl_base_dir=$(dirname "$(readlink "${0}" -f)")
+if [ -n "${PRL_WRAPPER_LIBREPO}" ];
+then
+	prl_libs_dir="${PRL_WRAPPER_LIBREPO}"
+else
+	prl_libs_dir="${prl_base_dir}/libs"
+fi
+prl_qt_plugin="${prl_base_dir}/platforms/libqxcb.so"
+prl_ld_library_path=
+prl_real_executable=${PRL_BIN_DIR:-$prl_base_dir}/${prl_executable}
+
+# Determine libprl_sdk with maximum major version in library repo
+prl_sdk_lib=$(ls "$prl_libs_dir" | grep '^libprl_sdk\.so\.[[:digit:]]\+' | sort -g -k3 -t. | tail -n1)
+
+prl_binary_arch() {
+	# Analyze ELF header.
+	elf=$(od "${1}" -An -N 5 -t x1 2>/dev/null)
+	if [ "x$elf" = "x 7f 45 4c 46 02" ];
+	then
+		echo "x86_64"
+		return 0
+	elif [ "x$elf" = "x 7f 45 4c 46 01" ];
+	then
+		echo "i386"
+		return 0
+	fi
+
+	return 1
+}
+
+
+# Arguments:
+# $1 - library to add
+# $2 - target file architecture
+# Return codes:
+#  0 - success
+#  1 - library not found in repo
+#  2 - library in repo has different architecture
+prl_add_lib() {
+	local lib="${1}"
+	local dir_to_append="${prl_libs_dir}/${lib}"
+	test -d "$dir_to_append" || return 1
+	local lib_arch="$(prl_binary_arch "${dir_to_append}/${lib}")"
+	[ "x$lib_arch" = "x" ] && return 1
+	test -n "${2}" && test "${2}" != "${lib_arch}" && return 2
+	prl_ld_library_path="${dir_to_append}${prl_ld_library_path:+:$prl_ld_library_path}"
+	return 0
+}
+
+
+prl_add_missing_libs() {
+	target_arch=$(prl_binary_arch "${1}")
+	while true;
+	do
+		missed_libs=$(\
+			LANGUAGE=C \
+			LANG=C \
+			LD_LIBRARY_PATH="${prl_ld_library_path}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+			ldd "${1}" 2>/dev/null | grep 'not found' | awk '{print $1}')
+		[ "x${missed_libs}" = "x" ] && break
+		missed_libs=$(echo "${missed_libs}" | sort -u)
+		for lib in $missed_libs;
+		do
+			prl_add_lib "$lib" "$target_arch"
+			rc=$?
+			if [ $rc -ne 0 ]
+			then
+				error_msg="parallels wrapper: cannot resolve dependence on ${lib}"
+				test $rc -eq 2 && error_msg="${error_msg} (different architecture of binaries)"
+				echo "$error_msg"
+				exit 13
+			fi
+		done
+	done
+
+}
+
+
+prl_add_shipped_qt() {
+		# Add shipped QT libs
+		prl_add_lib 'libQtCore.so.4'
+		prl_add_lib 'libQtGui.so.4'
+		prl_add_lib 'libQtNetwork.so.4'
+		prl_add_lib 'libQtOpenGL.so.4'
+		prl_add_lib 'libQtXml.so.4'
+}
+
+
+prl_add_plugin_deps() {
+	local executable="$1"
+	if ldd "$executable" | grep -q "libQt5Gui" 2>/dev/null; then
+		test -f "${prl_qt_plugin}" && prl_add_missing_libs "${prl_qt_plugin}"
+	fi
+}
+
+
+# Add Parallels SDK
+test -n "$prl_sdk_lib" && prl_add_lib "$prl_sdk_lib"
+
+# Add GCC-related libraries to improve binary compatibility
+prl_add_lib 'libgcc_s.so.1'
+prl_add_lib 'libstdc++.so.6'
+
+# for FC10
+prl_add_lib 'libGL.so.1'
+
+# for libQtNetwork.so.4 with ssl support
+prl_add_lib 'libcrypto.so'
+prl_add_lib 'libssl.so'
+
+prl_add_lib 'libfontconfig.so.1'
+
+prl_add_lib 'libxenserver.so.1'
+prl_add_lib 'libcurl.so.3'
+
+test "x${PRL_USE_SHIPPED_QT:-yes}" = "xyes" && \
+	prl_add_shipped_qt
+
+test -n "$prl_sdk_lib" && prl_add_missing_libs "${prl_base_dir}/libs/${prl_sdk_lib}/${prl_sdk_lib}"
+prl_add_missing_libs "${prl_real_executable}"
+prl_add_plugin_deps "${prl_real_executable}"
+
+export PRL_WRAP_EXEC="${0}"
+export PRL_LD_LIBRARY_PATH_PRESERVED=$LD_LIBRARY_PATH
+LD_LIBRARY_PATH="${prl_ld_library_path}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" exec "${prl_real_executable}" "$@"

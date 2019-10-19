@@ -1,0 +1,17 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+module prlvtg 1.0;
+
+require {
+	type xdm_t;
+	type thumb_t;
+	type proc_t;
+	class file write;
+}
+
+allow xdm_t proc_t:file write;
+allow thumb_t proc_t:file write;

@@ -1,0 +1,18 @@
+#######################################################
+# Copyright (C) 1999-2016 Parallels International GmbH.
+# All Rights Reserved.
+# http://www.parallels.com
+#######################################################
+
+obj-m := $(DRIVER).o
+$(DRIVER)-objs := pvmnet.o
+
+all:
+	make -C $(KERNEL_DIR) M=$(PWD) CC=$(CC)
+
+clean:
+	make -C $(KERNEL_DIR) M=$(PWD) CC=$(CC) clean
+	rm -f Module*.symvers
+
+distclean: clean
+	rm -f *~

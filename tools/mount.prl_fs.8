@@ -1,0 +1,65 @@
+.TH mount.prl_fs 8 "2014-10-01" "Parallels Tools for Linux"
+.SH NAME
+mount.prl_fs \- Parallels Shared Folders file system
+.SH SYNOPSIS
+.B mount -t prl_fs [-o \fIoptions\fB [,...]]
+\fIsf_name dir
+.SH DESCRIPTION
+Shared Folders Tool is a part of Parallels Tools for Linux. It allows you to
+share the host OS directories with virtual machines. As a result, you can access
+the same files both from host and guest OSs.
+.PP
+mount.prl_fs mounts the Parallels Shared Folders (PSF) virtual file system which
+is implemented by means of a special Linux kernel module (prl_fs.ko).
+.PP
+To make a directory accessible in a guest OS, first it must be shared in the
+host OS. When shared, each directory gets a "shared folder name" \fIsf_name\fR
+which may be treated as a unique directory identifier in PSF. Using the
+\fBmount(8)\fR utility, each shared folder \fIfs_name\fR can be mounted to an
+arbitrary mount point \fIdir\fR. Note that \fIsf_name\fR is
+\fIcase-insensitive\fR.
+.PP
+An important point to mention is mapping files ownership (user and group)
+between the host and guest OSs. Of course, direct "one-to-one" mapping between
+different OSs is almost impossible. That's why files ownership is "virtualized":
+files in a guest OS get "virtual" (or fake) ownership while in the host OS
+ownership is left intact. By default, files in a guest OS mounted shared folder
+get root:root ownership. However, you can change this using the \fIuid\fR,
+\fIgid\fR, \fIshare\fR, and \fIplain\fR PSF mount options.
+.PP
+A user is not supposed to mount PSF himself. It is done by the prlfsmountd
+utility (another part of Shared Folders Tool). Though, some technical details or
+options may change in future.
+.SH OPTIONS
+.TP
+.BR uid=\fIUID\fR
+Each file located in the shared folder will have the user ID \fIUID\fR.
+.TP
+.BR gid=\fIGID\fR
+Each file located in the shared folder will have the group ID \fIGID\fR.
+.TP
+.BR share
+Files in a shared folder get values of user and group IDs identical to those of
+the current process. In other words, a root process will see that files belong
+to root, and process with user:group 100:200 will see that files belong to
+100:200.
+.TP
+.BR plain
+Pass host raw numeric user and group IDs of file owners to guest. Note that even
+if these IDs are valid in host, they may be invalid in guest.
+.TP
+.BR ttl=\fITTL\fR
+"Time to live" of volume dentries in kernel in jiffies.
+.PP
+Other common options of \fBmount(8)\fR, such as \fBnodev\fR, \fBnosuid\fR,
+\fBatime\fR, etc. are possible here as well.
+.SH FILES
+.TP 18n
+.I /proc/fs/prl_fs/sf_list
+List of available shared folders.
+.SH EXAMPLE
+mount -t prl_fs -o nodev,nosuid,share foo /media/psf/foo
+.SH SEE ALSO
+mount(8)
+.SH COPYRIGHT
+Copyright (C) 1999-2016 Parallels International GmbH. All rights reserved.

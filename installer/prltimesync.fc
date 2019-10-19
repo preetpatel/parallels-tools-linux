@@ -1,0 +1,7 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2016 Parallels IP Holdings GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+/usr/bin/prltimesync -- gen_context(system_u:object_r:prltimesync_exec_t,s0)

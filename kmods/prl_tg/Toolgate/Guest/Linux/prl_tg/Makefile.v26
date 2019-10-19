@@ -1,0 +1,21 @@
+################################################################################
+#
+# Parallels Toolgate Linux driver
+# Copyright (c) 1999-2016 Parallels International GmbH. All rights reserved.
+#
+################################################################################
+CFILES = ./prltg.c ./prltg_call.c
+HFILES = ./prltg_compat.h ./prltg_common.h ../Interfaces/prltg.h \
+	../Interfaces/prltg_call.h ../../Interfaces/tgreq.h ../../../Interfaces/Tg.h
+
+obj-m += prl_tg.o
+prl_tg-objs := prltg.o prltg_call.o
+
+KVER ?= $(shell uname -r)
+SRC ?= /lib/modules/$(KVER)/build
+
+prl_tg:	$(CFILES) $(HFILES)
+	$(MAKE) -C $(SRC) SUBDIRS=$(shell pwd) SRCROOT=$(shell pwd) CC=$(CC) modules
+
+clean:
+	rm -rf *.o *.ko *.mod* *symvers .tmp_versions .*.cmd prl_tg.ver 

@@ -1,0 +1,17 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+module prlfs 1.0;
+
+require {
+	type unlabeled_t;
+	type mount_t;
+	class filesystem relabelfrom;
+}
+
+#============= mount_t ==============
+allow mount_t unlabeled_t:filesystem relabelfrom;
+

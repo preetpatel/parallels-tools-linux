@@ -1,0 +1,592 @@
+#!/bin/bash
+# Copyright (C) 1999-2016 Parallels International GmbH. All rights reserved.
+
+# Set the sane umask
+umask 022
+
+# Error codes
+VZ_INVALID_PARAMETER_SYNTAX=20
+VZ_FS_NO_DISK_SPACE=46
+VZ_FS_BAD_TMPL=47
+VZ_FS_NEW_VE_PRVT=48
+VZ_CHANGEPASS=74
+VZ_CANT_ADDIP=34
+VZ_IP_INUSE=78
+VZ_SET_RATE=80
+VZ_SET_ACCOUNT=81
+CP='/bin/cp -fp'
+[ -f /etc/fedora-release ] && CP='/bin/cp -f --preserve=mode,ownership'
+NWSYSTEMDIR="/etc/NetworkManager"
+NWSYSTEMCONF="$NWSYSTEMDIR/nm-system-settings.conf"
+NMCONFFILE="$NWSYSTEMDIR/NetworkManager.conf"
+NWSYSTEMCONNECTIONS="$NWSYSTEMDIR/system-connections"
+NWMANAGER="/etc/init.d/NetworkManager"
+[ -f "${NWMANAGER}" ] || NWMANAGER="/etc/init.d/network-manager"
+
+#options used in *-set_ip.sh
+USE_DHCPV4=0
+USE_DHCPV6=0
+
+# Prints error message and exits
+# Parameters:
+#   $1 - error message
+#   $2 - exit code
+# Example of usage:
+#   error "Fatal error" 1
+function error()
+{
+        # print errors to stdout too
+        ERR=$?
+        echo "$SELFNAME ERROR: $1"
+        exit $2
+}
+
+# Puts line
+# NAME="value"
+# to config file. If NAME is found, line gets replaced,
+# otherwise it is added to the end of file.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function put_param()
+{
+	local file="$1"
+	local name="$2"
+	local value="$3"
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -E "^$name=.*" $file>/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		/bin/sed -e "s|^$name=.*|$name=\"$value\"|" < ${file} > ${file}.$$
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		echo "$name=\"$value\"" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+	fi
+}
+
+# Adds value to variable NAME
+# in config file. If NAME is found, value gets added,
+# otherwise it is added to the end of file.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function add_param()
+{
+	local file=$1
+	local name=$2
+	local value=$3
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -qe "^$name=" $file >/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || \
+			error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		/bin/sed -e "s|^$name=\"\(.*\)\"|$name=\"\1 $value \"|" < ${file} > ${file}.$$
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		echo "$name=\"$value\"" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+	fi
+}
+
+function del_param()
+{
+	local file=$1
+	local name=$2
+	local value="$3"
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -qe "^$name=" $file >/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || \
+			error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		if [ -z "${value}" ]; then
+			/bin/sed -e "/^${name}=.*/d" < ${file} > ${file}.$$
+		else
+			sed -e "s|^${name}=\(.*\)${value}\(.*\)|${name}=\1\2|" <${file} > ${file}.$$
+		fi
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	fi
+}
+
+# Puts line
+# NAME value
+# to config file. If NAME is found, line gets replaced,
+# otherwise it is added to the end of file.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function put_param2()
+{
+	local file="$1"
+	local name="$2"
+	local value="$3"
+	local path;
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -E "^\<$name\>" $file>/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		/bin/sed -e "s|^\<$name\>.*|$name $value|" < ${file} > ${file}.$$
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		echo "$name $value" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+	fi
+}
+
+function del_param2()
+{
+	local file=$1
+	local name=$2
+	local value="$3"
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -qe "^$name " $file >/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || \
+			error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		if [ -z "${value}" ]; then
+			/bin/sed -e "/^${name} .*/d" < ${file} > ${file}.$$
+		else
+			sed -e "s|^${name} \(.*\)${value}\(.*\)|${name} \1\2|" <${file} > ${file}.$$
+		fi
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	fi
+}
+
+# Puts line
+# NAME=( value )
+# to config file. If NAME is found, line gets replaced,
+# otherwise it is added to the end of file.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function put_param3() {
+	local file=$1
+	local name=$2
+	local value=$3
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -E "^$name=\(.*\)" $file>/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		if [ -z "${value}" ]; then
+			/bin/sed -e "s|^$name=\(.*\)|$name=\( \)|" < ${file} > ${file}.$$
+		else
+			/bin/sed -e "s|^$name=\(.*\)|$name=\( \"$value\" \)|" < ${file} > ${file}.$$
+		fi
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		if [ -z "${value}" ]; then
+			echo "$name=( )" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		else
+			echo "$name=( \"$value\" )" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+	fi
+}
+
+# Adds value to array NAME
+# in config file. If NAME is found, value gets added,
+# otherwise it is added to the end of file.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function add_param3() {
+	local file=$1
+	local name=$2
+	local value=$3
+	local path
+
+	path=${file%/*}
+	if [ ! -d "${path}" ]; then
+		 mkdir -p ${path} || error "Unable to create dir ${path}" $VZ_FS_NO_DISK_SPACE
+	fi
+	if grep -E "^$name=\(.*\)" $file>/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		/bin/sed -r "s|^$name=\((.*)\)|$name=\( \1 \"$value\" \)|" < ${file} > ${file}.$$
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		echo "$name=( \"$value\" )" >> $file || error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+	fi
+}
+
+# Removes value from array NAME
+# in config file. If NAME is found, value gets removed,
+# otherwise this is a noop function.
+# Parameters:
+# $1 - config file
+# $2 - NAME
+# $3 - value
+function del_param3() {
+	local file=$1
+	local name=$2
+	local value=$3
+
+	[ ! -f $file ] && return
+
+	if grep -E "^$name=\(.*\)" $file>/dev/null 2>&1; then
+		${CP} ${file} ${file}.$$ || error "Can't copy file $file" $VZ_FS_NO_DISK_SPACE
+		/bin/sed -r "s|^($name=\( .*)\"$value\"(.* \))|\1\2|" < ${file} > ${file}.$$
+		if [ $? -ne 0 ]; then
+			rm -f ${file}.$$ 2>/dev/null
+			error "Can't change file $file" $VZ_FS_NO_DISK_SPACE
+		fi
+		mv -f ${file}.$$ ${file}
+	else
+		return
+	fi
+}
+
+function remove_debian_interface()
+{
+	local dev="$1"
+	local cfg="$2"
+
+	${CP} ${cfg} ${cfg}.$$ || \
+		error "Can't copy file ${cfg}" $VZ_FS_NO_DISK_SPACE
+
+	awk '
+		NF == 0 {next}
+		$1 == "auto" && $2 ~/'${dev}'$/ {next}
+		$1 == "iface" && $2 ~/'${dev}'$/ {skip = 1; next}
+		/^\t/ && skip {next}
+		{skip = 0; print}
+	' < ${cfg} > ${cfg}.$$ && mv -f ${cfg}.$$ ${cfg}
+
+	rm -f ${cfg}.$$ 2>/dev/null
+}
+
+function change_hostname()
+{
+	local cfg="$1"
+	local host="$2"
+	local ip="$3"
+	local comm='# Auto-generated hostname. Please do not remove this comment.'
+
+	[ -f "${cfg}" ] || touch ${cfg}
+	if [ "${host}" = "localhost" -o "${host}" = "localhost.localdomain" ];
+	then
+		put_param2 ${cfg} "127.0.0.1" "localhost.localdomain localhost"
+		return
+	fi
+	${CP} ${cfg} ${cfg}.$$ || \
+		error "Can't copy file ${cfg}" $VZ_FS_NO_DISK_SPACE
+	awk -v ip="${ip}" -v host="${host}" -v comm="${comm}" '
+                BEGIN {found = 0; skip = 0}
+                $0 == comm {found = 1; next}
+                found {
+                        if (ip == "") {ip = $1}
+			found = 0;
+                        next;
+                }
+		$0 ~ "\\<" host "\\>" {
+			if (!skip) {
+				skip = 1;
+			} else {
+				next;
+			}
+		}
+                {print}
+                END {
+                        if (skip) exit 0;
+                        if (ip == "") { ip ="127.0.0.1" }
+                        print comm;
+			alias=""
+			if ((i=index(host, ".")) > 1) {
+				alias=substr(host, 1, i - 1);
+			}
+			print ip " " host " " alias;
+                }
+	' < ${cfg} > ${cfg}.$$
+	if [ $? -ne 0 ]; then
+		rm -f ${cfg}.$$ 2>/dev/null
+		error "Can't change file ${cfg}" $VZ_FS_NO_DISK_SPACE
+	fi
+	mv -f ${cfg}.$$ ${cfg}
+}
+
+function is_ipv6()
+{
+	if [ "${1#*:}" != "${1}" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+check_dhcp()
+{
+	local found=
+
+	for pkg in dhcpcd dhclient; do
+		for p in /sbin /usr/sbin; do
+			if [ -x $p/$pkg ]; then
+				found=1;
+				break;
+			fi
+		done
+	done
+	[ -z "$found" ] && echo "Warning: DHCP client daemon not found"
+}
+
+check_dhcp_ipv6()
+{
+	local found=
+
+	for p in /sbin /usr/sbin; do
+		if [ -x $p/dhcp6c ]; then
+			found=1;
+			break;
+		fi
+	done
+	[ -z "$found" ] && echo "Warning: DHCP IPv6 client daemon not found"
+}
+
+regen_dhcp6c_conf()
+{
+	local eths="$*"
+	local conf="/etc/wide-dhcpv6/dhcp6c.conf"
+	local num=0
+	local dev
+
+	[ -d "/etc/wide-dhcpv6" ] || return
+
+	/bin/rm -f $conf
+	touch $conf
+
+	for dev in $eths; do
+		echo "
+interface $dev {
+send ia-na $num;
+request domain-name-servers;
+request domain-name;
+};
+
+id-assoc na $num {
+};
+	"	>> $conf
+		let num=nom+1
+	done
+}
+
+set_wide_dhcpv6()
+{
+	local ETH_DEV=$1
+	local config="/etc/default/wide-dhcpv6-client"
+	local ifaces=""
+
+	if [ -f $config ]; then
+		check_dhcp_ipv6
+		. $config
+		for iface in $INTERFACES; do
+			if [ "x$iface" != "x${ETH_DEV}" ]; then
+				ifaces="$iface "
+			else
+				return 0
+			fi
+		done
+		ifaces=`echo $ifaces | sed "s, $,,g"`
+		if [ -z $ifaces ]; then
+			echo "INTERFACES=\"${ETH_DEV}\"" > $config
+			regen_dhcp6c_conf "${ETH_DEV}"
+		else
+			echo "INTERFACES=\"$ifaces ${ETH_DEV}\"" > $config
+			regen_dhcp6c_conf "$ifaces ${ETH_DEV}"
+		fi
+		/etc/init.d/wide-dhcpv6-client restart >/dev/null 2>&1
+		/usr/sbin/update-rc.d -f wide-dhcpv6-client defaults >/dev/null 2>&1
+	fi
+}
+
+unset_wide_dhcpv6()
+{
+	local ETH_DEV=$1
+	local config="/etc/default/wide-dhcpv6-client"
+
+	if [ -f $config ]; then
+		. $config
+		for iface in $INTERFACES; do
+			if [ "x$iface" != "x${ETH_DEV}" ]; then
+				ifaces="$iface "
+			fi
+		done
+		ifaces=`echo $ifaces | sed "s, $,,g"`
+		echo "INTERFACES=\"$ifaces\"" > $config
+
+		regen_dhcp6c_conf "$ifaces"
+	fi
+}
+
+
+set_options()
+{
+	local options=" ${1} "
+	[ "${options/ dhcp }" != "${options}" ] && USE_DHCPV4=1
+	[ "${options/ dhcpv6 }" != "${options}" ] && USE_DHCPV6=1
+}
+
+disable_network_manager()
+{
+	local nm_sysv="/etc/init.d/NetworkManager"
+	local systemctl="/bin/systemctl"
+
+	if [ -x $nm_sysv ]; then
+		disable_network_manager_sysv
+	elif [ -x $systemctl ]; then
+		disable_network_manager_systemd
+	fi
+}
+
+disable_network_manager_systemd()
+{
+	local systemctl="/bin/systemctl"
+	local nm="NetworkManager"
+	local timeout=15
+	local service=`find /etc/systemd/ -name $nm.service 2>/dev/null`
+	local dhclient="dhclient"
+	local dhclient_pids=""
+
+	[ "x$service" = "x" ] && return
+
+	# Will wait for start complete
+	while [ $timeout -gt 0 ]; do
+		$systemctl status $nm
+		[ $? -eq 0 ] && break
+		sleep 1
+		timeout=$((timeout-1))
+	done
+	if [ $timeout -eq 0 ]; then
+		$systemctl status $nm
+		[ $? -ne 0 ] && return
+	fi
+
+	$systemctl stop $nm
+	$systemctl disable $nm
+
+	# Kill all dhclients, NM doesn't do it
+	dhclient_pids=`/bin/pgrep $dhclient 2>/dev/null`
+	for dhclient_pid in $dhclient_pids; do
+		kill $dhclient_pid > /dev/null 2>&1
+	done
+
+	/sbin/chkconfig network on
+	/etc/init.d/network restart
+}
+
+disable_network_manager_sysv()
+{
+	local nm="/etc/init.d/NetworkManager"
+	local ret=""
+
+	chkconfig --list NetworkManager | grep on
+	ret="$?"
+	if [ "$ret" == "0" ] ; then
+		chkconfig NetworkManager off
+		chkconfig network on
+	fi
+
+	$nm status | grep -q stopped
+	ret="$?"
+	if [ "$ret" != "0" ] ; then
+		$nm stop
+		/etc/init.d/network restart
+	fi
+}
+
+is_device_up()
+{
+	if [ -x /sbin/ip ]; then
+		LC_ALL=C /sbin/ip -o link show dev $1 2>/dev/null | grep -wq "UP"
+	else
+		LC_ALL=C /sbin/ifconfig $1 2>/dev/null | grep -wq "RUNNING"
+	fi
+
+	[ $? -eq 0 ] && return 0
+
+	return 1
+}
+
+nmcli_reset()
+{
+	if ! type nmcli > /dev/null 2>&1; then
+		return
+	fi
+	con_uuid=$(nmcli -f uuid con | grep -v UUID)
+	for uid in $con_uuid; do
+		nmcli con down uuid "$uid"
+		nmcli con up uuid "$uid"
+	done
+}
+
+generate_uuid()
+{
+	local uuid
+
+	if [ -x /bin/uuidgen -o -x /usr/bin/uuidgen ]; then
+		uuid=`uuidgen 2>/dev/null`
+	elif [ -f /proc/sys/kernel/random/uuid ]; then
+		uuid=`cat /proc/sys/kernel/random/uuid`
+	else
+		uuid=`python  -c 'import uuid; print uuid.uuid1()' 2>/dev/null`
+	fi
+
+	if [ "x$uuid" = "x" ]; then
+		# Only bash...
+		echo -n "$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))-"
+		echo -n "$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))-$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))-"
+		echo -n "$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))-$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))"
+		echo "$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))$((RANDOM %10))"
+	else
+		echo $uuid
+	fi
+}

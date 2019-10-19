@@ -1,0 +1,7 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+ACTION=="add", KERNEL=="cpu[0-9]*", RUN+="/bin/bash -c 'echo 1 > /sys/devices/system/cpu/%k/online'"

@@ -1,0 +1,11 @@
+#######################################################
+# Copyright (C) 1999-2016 Parallels International GmbH.
+# All Rights Reserved.
+# http://www.parallels.com
+#######################################################
+#
+# This file is needed for local compilation
+# Don't include this file to tarball
+SRCROOT := $(DRIVER_DIR)/../../../../../
+EXTRA_CFLAGS += -I$(SRCROOT) -I$(SRCROOT)/Monitor
+#

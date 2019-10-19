@@ -1,0 +1,16 @@
+# Copyright (c) 2004-2016 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+[Unit]
+Description=Parallels Tools Daemon
+Before=display-manager.service
+After=prltools_updater.service
+
+[Service]
+Type=forking
+ExecStart=/etc/init.d/prltoolsd start
+PIDFile=/var/run/prltoolsd.pid
+
+[Install]
+WantedBy=multi-user.target

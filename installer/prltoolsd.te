@@ -1,0 +1,79 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+policy_module(prltoolsd, 1.0.0)
+
+# Declarations
+
+type prltoolsd_t;
+type prltoolsd_exec_t;
+init_daemon_domain(prltoolsd_t, prltoolsd_exec_t)
+
+type prltoolsd_devpts_t;
+term_login_pty(prltoolsd_devpts_t)
+
+# Policy
+# Most of these policies configured using /var/log/audit/audit.log file,
+# Other grabbed from sshd.te standart Fedora 20 selinux te conf
+gen_require(`
+	type var_run_t;
+	type var_lib_t;
+	type init_var_lib_t;
+	type init_var_run_t;
+	type root_t;
+	type tmp_t;
+	type var_log_t;
+	type etc_t;
+	type unconfined_t;
+	type net_conf_t;
+	type hostname_etc_t;
+	type devlog_t;
+	type kernel_t;
+	type prltimesync_exec_t;
+	type prltimesync_t;
+')
+
+allow prltoolsd_t kernel_t:unix_dgram_socket sendto;
+allow prltoolsd_t devlog_t:sock_file write;
+allow prltoolsd_t net_conf_t:file { read open getattr };
+allow prltoolsd_t self:netlink_route_socket { create setopt bind getattr r_netlink_socket_perms };
+allow prltoolsd_t self:unix_dgram_socket { create connect };
+allow prltoolsd_t self:capability { sys_time ipc_lock dac_override sys_tty_config fsetid };
+allow prltoolsd_t self:process { setpgid signal };
+allow prltoolsd_t unconfined_t:process signal;
+allow prltoolsd_t root_t:dir search;
+allow prltoolsd_t tmp_t:dir { write add_name create };
+allow prltoolsd_t tmp_t:file { create write open };
+files_rw_pid_dirs(prltoolsd_t)
+unconfined_shell_domtrans(prltoolsd_t)
+dev_rw_sysfs(prltoolsd_t)
+corecmd_exec_bin(prltoolsd_t)
+corecmd_exec_shell(prltoolsd_t)
+kernel_list_proc(prltoolsd_t)
+kernel_read_all_proc(prltoolsd_t)
+kernel_write_proc_files(prltoolsd_t)
+term_use_console(prltoolsd_t)
+allow prltoolsd_t prltoolsd_devpts_t:chr_file { rw_chr_file_perms setattr_chr_file_perms relabelfrom };
+term_create_pty(prltoolsd_t, prltoolsd_devpts_t)
+term_write_all_terms(prltoolsd_t)
+term_setattr_console(prltoolsd_t)
+auth_read_passwd(prltoolsd_t)
+allow prltoolsd_t var_log_t:file { open setattr };
+allow prltoolsd_t etc_t:dir write;
+allow prltoolsd_t var_run_t:file { create write open getattr unlink read lock };
+allow prltoolsd_t var_lib_t:dir { write add_name create };
+allow prltoolsd_t var_lib_t:file { create write open getattr unlink read lock };
+allow prltoolsd_t init_var_lib_t:dir search;
+allow prltoolsd_t init_var_lib_t:file { open read write };
+allow prltoolsd_t init_var_run_t:file { open read write lock unlink };
+allow prltoolsd_t etc_t:dir remove_name;
+allow prltoolsd_t hostname_etc_t:file write;
+allow prltoolsd_t self:capability sys_admin;
+allow prltoolsd_t var_lib_t:dir remove_name;
+type_transition prltoolsd_t prltimesync_exec_t : process prltimesync_t;
+allow prltimesync_t prltoolsd_t:process { sigchld };
+allow prltoolsd_t prltimesync_exec_t:file { open read execute };
+allow prltoolsd_t prltimesync_t:process { transition signal };

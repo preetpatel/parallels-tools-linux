@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+Parallels Tools for Linux
+
+Copyright (c) 1999-2015 Parallels International GmbH.
+All rights reserved.
+http://www.parallels.com
+-->
+
+<deviceinfo version="0.2">
+  <device>
+    <match key="info.capabilities" contains="input.mouse">
+      <match key="input.originating_device" contains="i8042_AUX_port">      
+        <merge key="input.x11_driver" type="string">prlmouse</merge>
+      </match>
+    </match>
+  </device>
+</deviceinfo>

@@ -1,0 +1,51 @@
+#######################################################
+# Copyright (C) 1999-2016 Parallels International GmbH.
+# All Rights Reserved.
+# http://www.parallels.com
+#######################################################
+CFILES := super.c inode.c file.c interface.c
+HFILES := prlfs.h
+
+O_TARGET := $(DRIVER).o
+obj-m := $(O_TARGET)
+$(DRIVER)-objs := super.o inode.o file.o interface.o
+
+ARCH ?= $(shell uname -m)
+ifeq ($(ARCH), x86_64)
+ PLATFORM=_AMD64_
+ EXTRA_CFLAGS=-m64 -mcmodel=kernel -mno-red-zone -fno-asynchronous-unwind-tables -ffreestanding
+else
+ PLATFORM=_X86_
+ EXTRA_CFLAGS=-m32
+endif
+
+EXTRA_CFLAGS	+= $(INCLUDES) -DFILE_OFFSET_BITS=64 -fno-exceptions -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -fno-reorder-blocks -fno-builtin  -pipe -O2 -D$(PLATFORM) -D_LIN_ -D_KERNEL_
+
+SRC_TOP=$(PWD)/../../../../
+EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -DEXPORT_SYMTAB
+EXTRA_CFLAGS += -I$(KERNEL_DIR)/include -I$(SRC_TOP)
+ifeq "$(wildcard $(KERNEL_DIR)/include/linux/modversions.h)" "$(KERNEL_DIR)/include/linux/modversions.h"
+ EXTRA_CFLAGS	+= -DMODVERSIONS -include $(KERNEL_DIR)/include/linux/modversions.h
+ifeq "$(wildcard $(SRC_TOP)../prl_tg)" "$(SRC_TOP)../prl_tg"
+TG_SRC=$(SRC_TOP)../prl_tg/
+else
+TG_SRC=$(SRC_TOP)
+endif 
+ EXTRA_CFLAGS += -include $(TG_SRC)Toolgate/Guest/Linux/prl_tg/prl_tg.ver
+endif
+CFLAGS += $(EXTRA_CFLAGS)
+
+EXTRA_CFLAGS	+= $(shell \
+	grep -q "\<simple_sync_file\>" \
+		$(KERNEL_DIR)/include/linux/fs.h || \
+	echo -DPRL_SIMPLE_SYNC_FILE)
+
+prl_fs.o: $(CFILES:.c=.o)
+	$(LD) $(LDFLAGS) -r $^ -o $@
+
+$(CFILES:.c=.o): $(HFILES) Makefile
+default:
+	$(MAKE)
+
+clean:
+	rm -rf *.o *.ko *.mod* *symvers .tmp_versions .*.cmd

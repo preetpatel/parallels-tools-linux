@@ -1,0 +1,59 @@
+################################################################################
+#
+# Parallels Toolgate Linux driver
+# Copyright (c) 1999-2016 Parallels International GmbH. All rights reserved.
+#
+################################################################################
+CFILES = ./prltg.c ./prltg_call.c
+HFILES = ./prltg_compat.h ./prltg_common.h ../Interfaces/prltg.h \
+	../Interfaces/prltg_call.h ../../Interfaces/tgreq.h ../../../Interfaces/Tg.h
+
+obj-m += prl_tg.o
+prl_tg-objs := prltg.o prltg_call.o
+
+KVER ?= $(shell uname -r)
+SRC ?= /lib/modules/$(KVER)/build
+ARCH ?= $(shell uname -m)
+
+ifeq ($(ARCH), x86_64)
+ PLATFORM=_AMD64_
+ EXTRA_CFLAGS	+= -m64 -mcmodel=kernel -mno-red-zone -fno-asynchronous-unwind-tables -ffreestanding
+else
+ PLATFORM=_X86_
+ EXTRA_CFLAGS	+= -m32
+endif
+
+ifeq "$(wildcard $(SRC)/include/linux/modversions.h)" "$(SRC)/include/linux/modversions.h"
+ MODVER_CFLAGS	+= -DMODVERSIONS -include $(SRC)/include/linux/modversions.h
+endif
+
+EXTRA_CFLAGS	+= $(INCLUDES) -DFILE_OFFSET_BITS=64 -fno-exceptions -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -fno-reorder-blocks -fno-builtin  -pipe -O2 -D$(PLATFORM) -D_LIN_ -D_KERNEL_
+EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -DEXPORT_SYMTAB
+EXTRA_CFLAGS += -I$(SRC)/include
+EXTRA_CFLAGS	+= $(shell \
+	grep -q "\<wait_for_completion_interruptible\>" \
+		$(SRC)/include/linux/sched.h || \
+	echo -DPRL_INTERRUPTIBLE_COMPLETION)
+CFLAGS += $(EXTRA_CFLAGS)
+CFLAGS += $(MODVER_CFLAGS)
+
+.SILENT: prl_tg.o
+prl_tg.o: $(CFILES:.c=.o)
+	$(LD) $(LDFLAGS) -r $^ -o $@
+
+prltg.o: prl_tg.ver
+
+GENKSYMS = /sbin/genksyms
+ifeq ($(shell uname -a | awk '/SMP/ {print 1}'),1)
+	GENKSYMS += -p smp_
+endif
+
+prl_tg.ver: prltg.c
+	$(CC) -E $(EXTRA_CFLAGS) -D__GENKSYMS__ $^ | \
+	$(GENKSYMS) -k 2.4.0 > $@
+
+$(CFILES:.c=.o): $(HFILES) Makefile
+default:
+	$(MAKE)
+clean:
+	rm -rf *.o *.ko *.mod* *symvers .tmp_versions .*.cmd prl_tg.ver

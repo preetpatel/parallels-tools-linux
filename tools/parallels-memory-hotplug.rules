@@ -1,0 +1,7 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+ACTION=="add", KERNEL=="memory[0-9]*", WAIT_FOR="state", ATTR{state}="online"

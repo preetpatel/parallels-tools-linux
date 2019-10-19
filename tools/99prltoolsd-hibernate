@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+pidfile="/var/run/prltoolsd.pid"
+
+send_signal() {
+	if [ -e "$pidfile" ]; then
+		prlpid=$(cat "$pidfile")
+		kill -SIGUSR1 "$prlpid"
+	fi
+}
+
+case "${1}" in
+	thaw)
+		send_signal
+	;;
+
+	*)
+	;;
+esac
+

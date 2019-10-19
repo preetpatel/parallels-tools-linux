@@ -1,0 +1,65 @@
+#######################################################
+# Copyright (C) 1999-2016 Parallels International GmbH.
+# All Rights Reserved.
+# http://www.parallels.com
+#######################################################
+
+O_TARGET := $(DRIVER).o
+obj-y := pvmnet.o
+obj-m := $(O_TARGET)
+
+ifeq "$(wildcard $(KERNEL_DIR)/.config)" "$(KERNEL_DIR)/.config"
+
+#
+# Use kernel's makefile
+#
+all:
+	make -C $(KERNEL_DIR) SUBDIRS=$(PWD) CC=$(CC) modules
+
+dep:
+	make -C $(KERNEL_DIR) SUBDIRS=$(PWD) CC=$(CC) dep
+
+clean:
+	rm -f *.o .*.o.flags
+
+include $(KERNEL_DIR)/Rules.make
+
+else
+
+#
+# Make by hand
+#
+TOPDIR := $(KERNEL_DIR)
+HPATH := $(KERNEL_DIR)/include
+ARCH  := $(shell uname -m | sed -e s/i.86/i386/)
+kbuild_2_4_nostdinc := -nostdinc -iwithprefix include
+
+CFLAGS += -DMODULE -D__KERNEL__ -I $(HPATH) -Wall -Wstrict-prototypes \
+	  -Wno-trigraphs -O2 -fno-strict-aliasing -fno-common
+
+# Restore kernel config
+$(shell $(CC) -dM -E $(CFLAGS) $(HPATH)/linux/autoconf.h | \
+	sed -e "s/\#define //" -e "s/ /=/" -e "s/[()]//g " | \
+	grep ^CONFIG > .tmp_kernel_config)
+include .tmp_kernel_config
+
+ifndef CONFIG_FRAME_POINTER
+CFLAGS += -fomit-frame-pointer
+endif
+
+ifdef CONFIG_MODVERSIONS
+CFLAGS += -DMODVERSIONS -include $(HPATH)/linux/modversions.h
+endif
+
+include $(KERNEL_DIR)/Rules.make
+include $(KERNEL_DIR)/arch/$(ARCH)/Makefile
+
+clean:
+	rm -f *.o .*.o.flags .tmp_kernel_config
+endif
+
+.PHONY: distclean
+
+distclean: clean
+	rm -f .depend *~
+

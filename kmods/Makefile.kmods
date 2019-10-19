@@ -1,0 +1,70 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+first: compile
+
+PRL_ETH ?= prl_eth/pvmnet
+PRL_TG ?= prl_tg/Toolgate/Guest/Linux/prl_tg
+PRL_FS ?= prl_fs/SharedFolders/Guest/Linux/prl_fs
+PRL_FREEZE ?= prl_fs_freeze/Snapshot/Guest/Linux/prl_freeze
+PRL_DRM ?= prl_tg/Toolgate/Guest/Linux/prl_drm
+
+KVER ?= $(shell uname -r)
+KERNEL_DIR ?= /lib/modules/$(KVER)/build
+# Get version from version.h in kernel source directory
+ifeq "$(wildcard $(KERNEL_DIR)/include/linux/version.h)" ""
+	VERSION_H_PATH ?= $(KERNEL_DIR)/include/generated/uapi/linux/version.h
+else
+	VERSION_H_PATH ?= $(KERNEL_DIR)/include/linux/version.h
+endif
+VERSION_CODE := $(shell awk '/\#define[ \t]+LINUX_VERSION_CODE[ \t]\
+		*/ { print $$3 }' $(VERSION_H_PATH) | tail -n 1)
+
+ifndef PRL_FREEZE_SKIP
+	ifneq ($(shell if [ $(VERSION_CODE) -ge 132608 ]; then echo y; fi),y)
+		PRL_FREEZE_SKIP = 1
+	endif
+endif
+
+ifndef PRL_DRM_SKIP
+	ifneq ($(shell if [ $(VERSION_CODE) -ge 263936 -a -d $(PRL_DRM) ]; then echo y; fi),y)
+		PRL_DRM_SKIP = 1
+	endif
+endif
+
+# Get compiler version used for kernel build.
+KERNEL_CC_VER := $(shell cat /proc/version | grep -o -e 'cc \+version \+[0-9,\.]\+' | grep -o -e '[0-9,\.]\+')
+ifneq ($(findstring $(KERNEL_CC_VER), $(shell $(CC) --version | grep -e '^g*cc')),$(KERNEL_CC_VER))
+  $(info Searching for compiler $(KERNEL_CC_VER) due to version mismatch.)
+  $(foreach f,$(wildcard /usr/bin/gcc-[0-9]*),$(if $(filter $(KERNEL_CC_VER),$(shell $(f) --version | grep -e '^g*cc')),$(eval CC := $(f))))
+endif
+$(info Will use compiler CC="$(CC)".)
+$(info Compiler version "$(shell $(CC) --version | grep '^g*cc')")
+
+
+compile:
+	cd ${PRL_ETH} && make CC=$(CC)
+	cd ${PRL_TG} && make CC=$(CC)
+	cp -f ${PRL_TG}/*.symvers ${PRL_FS} ||:
+	cd ${PRL_FS} && make CC=$(CC)
+ifndef PRL_FREEZE_SKIP
+	cd ${PRL_FREEZE} && make CC=$(CC)
+endif
+ifndef PRL_DRM_SKIP
+	cp -f ${PRL_TG}/*.symvers ${PRL_DRM} ||:
+	cd ${PRL_DRM} && make CC=$(CC)
+endif
+
+clean:
+	cd ${PRL_ETH} && make clean
+	cd ${PRL_TG} && make clean
+	cd ${PRL_FS} && make clean
+ifndef PRL_FREEZE_SKIP
+	cd ${PRL_FREEZE} && make clean
+endif
+ifndef PRL_DRM_SKIP
+	cd ${PRL_DRM} && make clean
+endif

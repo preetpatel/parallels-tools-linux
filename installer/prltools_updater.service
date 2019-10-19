@@ -1,0 +1,22 @@
+############################################################
+# Copyright (c) 2004-2014 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+############################################################
+
+# Parallels Tools updater service
+# Used to reinstall Parallels Tools
+[Unit]
+Description="Parallels Tools Updater"
+# We chould block display-manager until
+# this service is finished. Start it before.
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/prltools_updater.sh -i
+# Not allow to kill service with timeout
+TimeoutSec=0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+[Desktop Entry]
+Version=14.1.3.45485
+Encoding=UTF-8
+Name=Parallels Tools Installation Agent
+Type=Application
+Exec=/usr/bin/ptiagent --info
+X-KDE-autostart-phase=1
+GenericName[en_US]=
+Icon=parallels-tools

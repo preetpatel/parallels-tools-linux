@@ -1,0 +1,7 @@
+# Parallels Tools for Linux
+#
+# Copyright (c) 1999-2015 Parallels International GmbH.
+# All rights reserved.
+# http://www.parallels.com
+
+ACTION=="add|change", ENV{ID_INPUT_MOUSE}=="?*", ATTRS{description}=="i8042 AUX port", KERNEL=="event[0-9]*", ENV{ID_INPUT.tags}="prlmouse"
